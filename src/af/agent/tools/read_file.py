@@ -109,6 +109,7 @@ class ReadFileTool(Tool[ReadFileResult]):
                     result["remark"] = (
                         f"Output truncated at {byte_cnt} bytes. Call again with start_line={i + 1} to read more."
                     )
+                    break
                 result["lines"].append({"line_number": i + 1, "content": s})
                 byte_cnt += len(s.encode("utf-8"))
         if not len(result["lines"]):
