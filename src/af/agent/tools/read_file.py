@@ -24,7 +24,10 @@ class ReadFileTool(Tool[ReadFileResult]):
     @property
     @override
     def description(self) -> str:
-        return "Reads a range of lines from a file and returns them with line numbers, up to 1000 lines per call."
+        return (
+            "Reads a range of lines from a file and returns them with line numbers. "
+            "Each call returns at most 1000 lines or 64 KB, whichever is reached first."
+        )
 
     @property
     @override
@@ -42,7 +45,7 @@ class ReadFileTool(Tool[ReadFileResult]):
                 },
                 "end_line": {
                     "type": "integer",
-                    "description": "1-based line number, inclusive, default EOF.",
+                    "description": "1-based line number, inclusive, default start_line + 999.",
                 },
             },
             "required": ["file_path"],
@@ -53,7 +56,7 @@ class ReadFileTool(Tool[ReadFileResult]):
         file_path = self._check_file_path(p.get("file_path"))
         start_line = self._check_start_line(p.get("start_line"))
         end_line = self._check_end_line(start_line, p.get("end_line"))
-        return await asyncio.to_thread(self._execute_read_file, file_path, start_line, end_line)
+        return await asyncio.to_thread(self._read_file, file_path, start_line, end_line)
 
     def _check_file_path(self, file_path: Any) -> Path:
         if not file_path:
@@ -84,30 +87,30 @@ class ReadFileTool(Tool[ReadFileResult]):
         if end_line < 1:
             raise ToolExecuteException(f"Error: end_line must be 1-based, got `{end_line}`.")
         if end_line < start_line:
-            raise ToolExecuteException(f"Error: end_line must be less than start_line, got `{end_line}`.")
+            raise ToolExecuteException(f"Error: end_line must be >= start_line, got `{end_line}`.")
         return end_line
 
-    def _execute_read_file(self, file_path: Path, start_line: int, end_line: int) -> ReadFileResult:
+    def _read_file(self, file_path: Path, start_line: int, end_line: int) -> ReadFileResult:
         result: ReadFileResult = {"lines": []}
+        byte_cnt = 0
         with file_path.open("r", encoding="utf-8", errors="replace") as f:
-            cnt = 0
             for i, s in enumerate(f):
                 if i < start_line - 1:
                     continue
-                if i >= end_line:
+                if i + 1 > end_line:
                     break
-                cnt += 1
-                if cnt > 1000:
+                line_cnt = len(result["lines"])
+                if line_cnt + 1 > 1000:
                     result["remark"] = (
-                        f"Output truncated: only {cnt - 1} lines are shown. "
-                        f"To read more, call again with `start_line={start_line + cnt - 1}`."
+                        f"Output truncated at {line_cnt} lines. Call again with start_line={i + 1} to read more."
                     )
                     break
+                if byte_cnt >= 64 * 1024:
+                    result["remark"] = (
+                        f"Output truncated at {byte_cnt} bytes. Call again with start_line={i + 1} to read more."
+                    )
                 result["lines"].append({"line_number": i + 1, "content": s})
+                byte_cnt += len(s.encode("utf-8"))
         if not len(result["lines"]):
-            result["remark"] = (
-                f"No content from line {start_line} "
-                f"to {end_line if end_line is not None else 'EOF'}. "
-                f"Check the file line count."
-            )
+            result["remark"] = f"No content from line {start_line} to {end_line}. Check the file line count."
         return result
