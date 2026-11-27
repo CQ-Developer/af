@@ -11,3 +11,4 @@ wheels/
 
 # customized
 .tmp
+.vscode

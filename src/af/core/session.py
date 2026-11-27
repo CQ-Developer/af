@@ -1,78 +1,99 @@
 from abc import ABC, abstractmethod
-from typing import Literal, TypedDict
+from typing import Any, Literal, NotRequired, TypedDict
 
 
-class Message(TypedDict):
-    timestamp: int
-    message_id: str
-    index: int
+class TextBlock(TypedDict):
+    type: Literal["text"]
+    text: str
 
 
-class SystemMessage(Message):
-    type: Literal["system"]
-    content: str
-
-
-class UserMessage(Message):
-    type: Literal["user"]
-    content: str
-
-
-class ImageMessage(Message):
-    type: Literal["image"]
-
-
-class Base64ImageMessage(ImageMessage):
-    base64: str
-
-
-class UrlImageMessage(ImageMessage):
+class UrlImageBlock(TypedDict):
+    type: Literal["url_image"]
     url: str
 
 
-class UploadImageMessage(ImageMessage):
+class FileImageBlock(TypedDict):
+    type: Literal["file_image"]
     file_id: str
 
 
-class AssistantMessage(Message):
-    type: Literal["assistant"]
-    content: str
+class Base64ImageBlock(TypedDict):
+    type: Literal["base64_image"]
+    media_type: str
+    data: str
 
 
-class ReasoningMessage(Message):
+class ReasoningBlock(TypedDict):
     type: Literal["reasoning"]
-    content: str
+    reasoning: str
+    signature: NotRequired[str]
 
 
-class ToolMessage(Message):
-    type: Literal["tool"]
+class ToolCallBlock(TypedDict):
+    type: Literal["tool_call"]
     call_id: str
+    tool_name: str
+    arguments: dict[str, Any]
 
 
-class ToolCallMessage(ToolMessage):
-    name: str
-    argument: str
+class ToolResultBlock(TypedDict):
+    type: Literal["tool_result"]
+    call_id: str
+    result: list[TextBlock | UrlImageBlock | FileImageBlock | Base64ImageBlock]
 
 
-class ToolResultMessage(ToolMessage):
-    result: str
+class MessageMetadata(TypedDict):
+    id: str
+    pid: str
+    timestamp: int
+
+
+class SystemMessage(TypedDict):
+    _meta: MessageMetadata
+    role: Literal["system"]
+    content: list[TextBlock]
+
+
+class UserMessage(TypedDict):
+    _meta: MessageMetadata
+    role: Literal["user"]
+    content: list[TextBlock | UrlImageBlock | FileImageBlock | Base64ImageBlock | ToolResultBlock]
+
+
+class AssistantMessage(TypedDict):
+    _meta: MessageMetadata
+    role: Literal["assistant"]
+    content: list[TextBlock | ReasoningBlock | ToolCallBlock]
+
+
+Message = SystemMessage | UserMessage | AssistantMessage
+
+
+class MessageTreeNode(TypedDict):
+    data: Message
+    sub_nodes: list[MessageTreeNode]
+
+
+class Session(ABC):
+    @abstractmethod
+    async def load_tree(self) -> MessageTreeNode: ...
+
+    @abstractmethod
+    async def expand_context(self, message: Message) -> list[Message]: ...
+
+    @abstractmethod
+    async def append_message(self, message: Message) -> None: ...
 
 
 class SessionManager(ABC):
     @abstractmethod
-    async def list_sessions(self): ...
+    async def list_sessions(self) -> list[Session]: ...
 
     @abstractmethod
-    async def load_session(self, session_id: str) -> list[Message]: ...
+    async def create_session(self) -> Session: ...
 
     @abstractmethod
-    async def create_session(self) -> str: ...
+    async def delete_session(self, session: Session) -> None: ...
 
     @abstractmethod
-    async def delete_session(self, session_id: str): ...
-
-    @abstractmethod
-    async def fork_session(self, session_id: str, message_id: str): ...
-
-    @abstractmethod
-    async def append_messages(self, session_id: str, messages: list[Message]): ...
+    async def fork_session(self, session: Session) -> Session: ...
