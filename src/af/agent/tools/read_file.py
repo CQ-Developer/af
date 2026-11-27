@@ -25,7 +25,7 @@ class ReadFileTool(Tool[ReadFileResult]):
     @override
     def description(self) -> str:
         return (
-            "Reads a range of lines from a file and returns them with line numbers. "
+            "Reads a range of lines from a regular file and returns them with line numbers. "
             "Each call returns at most 1000 lines or 64 KB, whichever is reached first."
         )
 
